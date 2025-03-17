@@ -1,0 +1,1670 @@
+<!DOCTYPE html><html lang="en"><head><meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://api.mistral.ai https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com https://d3js.org https://threejs.org https://cdn.plot.ly https://stackpath.bootstrapcdn.com https://maps.googleapis.com https://cdn.tailwindcss.com https://ajax.googleapis.com https://kit.fontawesome.com https://cdn.datatables.net https://maxcdn.bootstrapcdn.com https://code.highcharts.com https://tako-static-assets-production.s3.amazonaws.com https://www.youtube.com https://fonts.googleapis.com https://fonts.gstatic.com https://pfst.cf2.poecdn.net https://puc.poecdn.net https://i.imgur.com https://wikimedia.org https://*.icons8.com https://*.giphy.com https://picsum.photos https://images.unsplash.com; frame-src 'self' https://www.youtube.com https://trytako.com; child-src 'self'; manifest-src 'self'; worker-src 'self'; upgrade-insecure-requests; block-all-mixed-content;">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Compliance Checker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#5D5CDE',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .dark {
+            color-scheme: dark;
+        }
+        
+        .dark body {
+            background-color: #181818;
+            color: #e5e5e5;
+        }
+        
+        .fileItem {
+            transition: background-color 0.2s;
+        }
+
+        .fileItem:hover {
+            background-color: rgba(93, 92, 222, 0.1);
+        }
+
+        .spin {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .result-checkmark {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .confidence-100 {
+            color: #22c55e;
+        }
+
+        .confidence-partial {
+            color: #f59e0b;
+        }
+
+        .confidence-none {
+            color: #ef4444;
+        }
+
+        /* Custom scrollbar for the tables */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f3f4f6;
+        }
+
+        .dark .custom-scrollbar::-webkit-scrollbar-track {
+            background: #2a2a2a;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #4b5563;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background-color: #94a3b8;
+        }
+
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background-color: #6b7280;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <h1 class="text-3xl font-bold text-center mb-8 text-primary">Image Compliance Checker</h1>
+        
+        <div class="mb-8">
+            <div class="p-6 bg-gray-50 dark:bg-gray-800 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4">Step 1: Enter your Mistral AI API Key</h2>
+                <div class="mb-4">
+                    <label for="apiKey" class="block mb-2 text-sm font-medium">API Key</label>
+                    <input type="password" id="apiKey" placeholder="..." class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-base focus:ring-2 focus:ring-primary focus:border-primary">
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Your API key is never stored or sent anywhere except to Mistral AI</p>
+                </div>
+                <div class="mb-4">
+                    <label for="modelSelect" class="block mb-2 text-sm font-medium">Select Model</label>
+                    <select id="modelSelect" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-base focus:ring-2 focus:ring-primary focus:border-primary">
+                        <option value="mistral-large-vision">Mistral Large Vision</option>
+                        <option value="mistral-medium-vision" selected>Mistral Medium Vision</option>
+                        <option value="mistral-small-vision">Mistral Small Vision (more affordable)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-8">
+            <div class="p-6 bg-gray-50 dark:bg-gray-800 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4">Step 2: Define Compliance Checklist Items</h2>
+                <div class="mb-4">
+                    <label for="checklistItems" class="block mb-2 text-sm font-medium">Checklist Items (one per line)</label>
+                    <textarea id="checklistItems" rows="5" placeholder="Volume: 10ml, 50ml, 100ml, 1L, etc.
+Warning labels: Flammable, Toxic, etc.
+Ingredients: Water, Alcohol, etc." class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-base focus:ring-2 focus:ring-primary focus:border-primary"></textarea>
+                </div>
+
+                <div class="flex flex-wrap gap-2 mb-4" id="presetTags">
+                    <button class="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 transition" data-tag="Volume units: ml, L, g, kg">Volume units</button>
+                    <button class="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 transition" data-tag="Warning labels: Flammable, Toxic, Corrosive">Warning labels</button>
+                    <button class="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 transition" data-tag="Ingredient list present">Ingredients</button>
+                    <button class="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 transition" data-tag="Expiration date format: MM/YYYY">Expiration date</button>
+                </div>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Click on tags to add common checklist items</p>
+            </div>
+        </div>
+
+        <div class="mb-8">
+            <div class="p-6 bg-gray-50 dark:bg-gray-800 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4">Step 3: Upload Images</h2>
+                <div class="mb-4">
+                    <label for="imageUpload" class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600">
+                        <div class="flex flex-col items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                            </svg>
+                            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Click to upload or drag and drop</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">PNG, JPG, JPEG (MAX: 5MB per file)</p>
+                        </div>
+                        <input id="imageUpload" type="file" class="hidden" multiple="" accept="image/*">
+                    </label>
+                </div>
+                
+                <div class="mb-4">
+                    <div class="flex justify-between items-center">
+                        <p id="fileCount" class="text-sm text-gray-500 dark:text-gray-400">0 files selected</p>
+                        <button id="clearFilesBtn" class="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition" disabled="">Clear all</button>
+                    </div>
+                </div>
+
+                <div id="fileList" class="max-h-60 overflow-y-auto custom-scrollbar border border-gray-200 dark:border-gray-700 rounded-lg mb-4 divide-y divide-gray-200 dark:divide-gray-700">
+                    <!-- File list will appear here -->
+                    <div class="p-4 text-center text-gray-500 dark:text-gray-400">No files selected</div>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                    <button id="analyzeBtn" class="px-4 py-2 bg-primary text-white rounded-md hover:bg-opacity-90 transition flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" disabled="">
+                        <span>Analyze Images</span>
+                        <svg id="analyzeSpinner" class="ml-2 w-4 h-4 hidden spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </button>
+                    <button id="pauseBtn" class="px-4 py-2 bg-amber-500 text-white rounded-md hover:bg-opacity-90 transition hidden">
+                        Pause Processing
+                    </button>
+                    <button id="resumeBtn" class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-opacity-90 transition hidden">
+                        Resume Processing
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="resultsSection" class="mb-8 hidden">
+            <div class="p-6 bg-gray-50 dark:bg-gray-800 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4">Results</h2>
+                
+                <div class="mb-4 flex flex-wrap gap-2">
+                    <button id="exportCSVBtn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-opacity-90 transition flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                        Copy as CSV
+                    </button>
+                    <button id="downloadTableBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-opacity-90 transition flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        Download HTML Table
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table id="resultsTable" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-100 dark:bg-gray-700">
+                            <tr id="resultsTableHeader">
+                                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">#</th>
+                                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Image</th>
+                                <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Filename</th>
+                                <!-- Checklist columns will be added here dynamically -->
+                            </tr>
+                        </thead>
+                        <tbody id="resultsTableBody" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            <!-- Results will be populated here -->
+                            <tr>
+                                <td colspan="3" class="px-4 py-4 text-center text-gray-500 dark:text-gray-400">No results yet</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="progressSection" class="mb-8 hidden">
+            <div class="p-6 bg-gray-50 dark:bg-gray-800 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4">Processing Progress</h2>
+                <div class="relative pt-1">
+                    <div class="flex mb-2 items-center justify-between">
+                        <div>
+                            <span id="progressPercentage" class="text-xs font-semibold inline-block text-primary">
+                                0%
+                            </span>
+                        </div>
+                        <div class="text-right">
+                            <span id="progressCount" class="text-xs font-semibold inline-block text-gray-500 dark:text-gray-400">
+                                0/0
+                            </span>
+                        </div>
+                    </div>
+                    <div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-gray-200 dark:bg-gray-700">
+                        <div id="progressBar" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-primary" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div id="currentlyProcessing" class="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                    Waiting to start...
+                </div>
+                <div id="errorMessages" class="mt-4 text-sm text-red-500 hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Detect dark mode
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+        }
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+            if (event.matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+
+        // Global variables
+        const fileLimit = 500; // Practical limit for browser performance
+        const fileSizeLimit = 5 * 1024 * 1024; // 5MB
+        let selectedFiles = [];
+        let checklistItems = [];
+        let results = [];
+        let isProcessing = false;
+        let shouldPause = false;
+        let currentFileIndex = 0;
+
+        // DOM Elements
+        const apiKeyInput = document.getElementById('apiKey');
+        const modelSelect = document.getElementById('modelSelect');
+        const checklistItemsInput = document.getElementById('checklistItems');
+        const presetTagsContainer = document.getElementById('presetTags');
+        const imageUploadInput = document.getElementById('imageUpload');
+        const fileCountDisplay = document.getElementById('fileCount');
+        const fileListContainer = document.getElementById('fileList');
+        const clearFilesBtn = document.getElementById('clearFilesBtn');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resumeBtn = document.getElementById('resumeBtn');
+        const analyzeSpinner = document.getElementById('analyzeSpinner');
+        const resultsSection = document.getElementById('resultsSection');
+        const progressSection = document.getElementById('progressSection');
+        const progressBar = document.getElementById('progressBar');
+        const progressPercentage = document.getElementById('progressPercentage');
+        const progressCount = document.getElementById('progressCount');
+        const currentlyProcessing = document.getElementById('currentlyProcessing');
+        const errorMessages = document.getElementById('errorMessages');
+        const resultsTableHeader = document.getElementById('resultsTableHeader');
+        const resultsTableBody = document.getElementById('resultsTableBody');
+        const exportCSVBtn = document.getElementById('exportCSVBtn');
+        const downloadTableBtn = document.getElementById('downloadTableBtn');
+
+        // Event Listeners
+        presetTagsContainer.addEventListener('click', (e) => {
+            if (e.target.dataset.tag) {
+                const currentText = checklistItemsInput.value;
+                const newTag = e.target.dataset.tag;
+                checklistItemsInput.value = currentText ? `${currentText}\n${newTag}` : newTag;
+            }
+        });
+
+        imageUploadInput.addEventListener('change', handleFileSelect);
+        clearFilesBtn.addEventListener('click', clearFiles);
+        analyzeBtn.addEventListener('click', startAnalysis);
+        pauseBtn.addEventListener('click', pauseProcessing);
+        resumeBtn.addEventListener('click', resumeProcessing);
+        exportCSVBtn.addEventListener('click', exportAsCSV);
+        downloadTableBtn.addEventListener('click', downloadHTMLTable);
+
+        // Check inputs to enable/disable analyze button
+        function checkInputs() {
+            const apiKey = apiKeyInput.value.trim();
+            const hasChecklist = checklistItemsInput.value.trim() !== '';
+            const hasFiles = selectedFiles.length > 0;
+            
+            analyzeBtn.disabled = !apiKey || !hasChecklist || !hasFiles || isProcessing;
+        }
+
+        apiKeyInput.addEventListener('input', checkInputs);
+        checklistItemsInput.addEventListener('input', checkInputs);
+
+        // Handle file selection
+        function handleFileSelect(e) {
+            const files = Array.from(e.target.files);
+            
+            // Filter by size and type
+            const validFiles = files.filter(file => {
+                if (!file.type.match('image.*')) {
+                    return false;
+                }
+                if (file.size > fileSizeLimit) {
+                    return false;
+                }
+                return true;
+            });
+            
+            // Check file limit
+            if (selectedFiles.length + validFiles.length > fileLimit) {
+                alert(`You can only select up to ${fileLimit} files at once.`);
+                const allowedCount = fileLimit - selectedFiles.length;
+                validFiles.splice(allowedCount);
+            }
+            
+            // Add valid files to the list
+            selectedFiles = [...selectedFiles, ...validFiles];
+            updateFileList();
+            checkInputs();
+        }
+
+        // Update the file list display
+        function updateFileList() {
+            fileCountDisplay.textContent = `${selectedFiles.length} files selected`;
+            clearFilesBtn.disabled = selectedFiles.length === 0;
+            
+            if (selectedFiles.length === 0) {
+                fileListContainer.innerHTML = '<div class="p-4 text-center text-gray-500 dark:text-gray-400">No files selected</div>';
+                return;
+            }
+            
+            fileListContainer.innerHTML = '';
+            selectedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'fileItem p-3 flex items-center justify-between';
+                
+                const fileInfo = document.createElement('div');
+                fileInfo.className = 'flex items-center';
+                
+                // Create thumbnail preview
+                const thumbnail = document.createElement('div');
+                thumbnail.className = 'w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded mr-3 overflow-hidden flex items-center justify-center';
+                
+                const img = document.createElement('img');
+                img.className = 'w-full h-full object-cover';
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+                
+                thumbnail.appendChild(img);
+                fileInfo.appendChild(thumbnail);
+                
+                // File name and size
+                const details = document.createElement('div');
+                const fileName = document.createElement('div');
+                fileName.className = 'text-sm font-medium truncate max-w-[200px] sm:max-w-xs';
+                fileName.textContent = file.name;
+                
+                const fileSize = document.createElement('div');
+                fileSize.className = 'text-xs text-gray-500 dark:text-gray-400';
+                fileSize.textContent = formatFileSize(file.size);
+                
+                details.appendChild(fileName);
+                details.appendChild(fileSize);
+                fileInfo.appendChild(details);
+                
+                fileItem.appendChild(fileInfo);
+                
+                // Remove button
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'text-red-500 hover:text-red-700 text-sm';
+                removeBtn.innerHTML = '&times;';
+                removeBtn.addEventListener('click', () => {
+                    selectedFiles.splice(index, 1);
+                    updateFileList();
+                    checkInputs();
+                });
+                
+                fileItem.appendChild(removeBtn);
+                fileListContainer.appendChild(fileItem);
+            });
+        }
+
+        function clearFiles() {
+            selectedFiles = [];
+            updateFileList();
+            checkInputs();
+            imageUploadInput.value = '';
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        // Start the analysis process
+        async function startAnalysis() {
+            console.log('Starting analysis...');
+            
+            // Check if all required elements exist
+            const requiredElements = {
+                resultsTableHeader,
+                resultsTableBody,
+                progressBar,
+                progressPercentage,
+                progressCount,
+                currentlyProcessing,
+                errorMessages
+            };
+            
+            const missingElements = Object.entries(requiredElements)
+                .filter(([name, element]) => !element)
+                .map(([name]) => name);
+            
+            if (missingElements.length > 0) {
+                console.error('Missing required elements:', missingElements);
+                alert(`Error: Missing required elements: ${missingElements.join(', ')}`);
+                return;
+            }
+            
+            if (selectedFiles.length === 0) {
+                alert('Please select at least one file to analyze');
+                return;
+            }
+            
+            // Get API key and model
+            const apiKey = apiKeyInput.value.trim();
+            const model = modelSelect.value;
+            
+            if (!apiKey) {
+                alert('Please enter your Mistral AI API key');
+                return;
+            }
+            
+            // Parse checklist items
+            const checklistText = checklistItemsInput.value.trim();
+            if (!checklistText) {
+                alert('Please define at least one checklist item');
+                return;
+            }
+            
+            checklistItems = checklistText.split('\n')
+                .map(item => item.trim())
+                .filter(item => item.length > 0);
+            
+            // Update UI for processing
+            isProcessing = true;
+            shouldPause = false;
+            currentFileIndex = 0;
+            results = [];
+            
+            analyzeBtn.disabled = true;
+            analyzeSpinner.classList.remove('hidden');
+            pauseBtn.classList.remove('hidden');
+            resumeBtn.classList.add('hidden');
+            progressSection.classList.remove('hidden');
+            
+            // Initialize results table
+            initializeResultsTable();
+            
+            // Process files sequentially
+            await processFiles(apiKey, model);
+        }
+
+        function pauseProcessing() {
+            shouldPause = true;
+            pauseBtn.classList.add('hidden');
+            resumeBtn.classList.remove('hidden');
+            currentlyProcessing.textContent = 'Processing paused...';
+        }
+
+        function resumeProcessing() {
+            shouldPause = false;
+            resumeBtn.classList.add('hidden');
+            pauseBtn.classList.remove('hidden');
+            processFiles(apiKeyInput.value.trim(), modelSelect.value);
+        }
+
+        // Process files sequentially
+        async function processFiles(apiKey, model) {
+            console.log('Starting processFiles function...');
+            const totalFiles = selectedFiles.length;
+            
+            // Update progress display
+            progressCount.textContent = `${currentFileIndex}/${totalFiles}`;
+            currentlyProcessing.textContent = 'Starting processing...';
+            
+            while (currentFileIndex < totalFiles && !shouldPause) {
+                const file = selectedFiles[currentFileIndex];
+                
+                // Update progress
+                const percent = Math.round((currentFileIndex / totalFiles) * 100);
+                progressBar.style.width = `${percent}%`;
+                progressPercentage.textContent = `${percent}%`;
+                progressCount.textContent = `${currentFileIndex}/${totalFiles}`;
+                currentlyProcessing.textContent = `Processing: ${file.name}`;
+                
+                console.log(`Processing file ${currentFileIndex + 1}/${totalFiles}: ${file.name}`);
+                
+                try {
+                    // Process the current file
+                    const result = await processFile(file, apiKey, model);
+                    console.log(`Successfully processed file: ${file.name}`);
+                    results.push(result);
+                    
+                    // Add to results table
+                    addResultToTable(result, currentFileIndex);
+                    
+                    // Show results section if it's hidden
+                    if (resultsSection.classList.contains('hidden')) {
+                        resultsSection.classList.remove('hidden');
+                    }
+                } catch (error) {
+                    console.error(`Error processing file ${file.name}:`, error);
+                    errorMessages.classList.remove('hidden');
+                    errorMessages.innerHTML += `<div>Error processing ${file.name}: ${error.message}</div>`;
+                    
+                    // Add error result
+                    const errorResult = {
+                        file: file,
+                        error: error.message,
+                        checklistResults: checklistItems.map(item => ({ 
+                            item, 
+                            found: false, 
+                            confidence: 0 
+                        }))
+                    };
+                    results.push(errorResult);
+                    addResultToTable(errorResult, currentFileIndex);
+                }
+                
+                currentFileIndex++;
+                
+                // Short delay to allow UI updates
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            // Check if we're done or paused
+            if (currentFileIndex >= totalFiles) {
+                // Done processing
+                console.log('All files processed, finishing up...');
+                finishProcessing();
+            } else {
+                // Paused processing
+                console.log('Processing paused at file', currentFileIndex);
+                const percent = Math.round((currentFileIndex / totalFiles) * 100);
+                progressBar.style.width = `${percent}%`;
+                progressPercentage.textContent = `${percent}%`;
+                progressCount.textContent = `${currentFileIndex}/${totalFiles}`;
+            }
+        }
+
+        // Process a single file
+        async function processFile(file, apiKey, model) {
+            console.log(`Starting to process file: ${file.name}`);
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = async function(e) {
+                    try {
+                        console.log(`File ${file.name} loaded into memory`);
+                        const base64Image = e.target.result.split(',')[1];
+                        
+                        const prompt = createAnalysisPrompt(checklistItems);
+                        console.log(`Prompt created for ${file.name}, length: ${prompt.length}`);
+                        
+                        const response = await callMistralAPI(apiKey, model, base64Image, prompt);
+                        console.log(`Received response for ${file.name}`);
+                        
+                        // Parse the response
+                        let parsedResponse;
+                        let extractedText = '';
+                        
+                        try {
+                            parsedResponse = JSON.parse(response);
+                            extractedText = parsedResponse.extractedText || '';
+                            
+                            // Update the extracted text display
+                            updateExtractedTextDisplay(extractedText);
+                            
+                        } catch (e) {
+                            console.error('Error parsing response:', e);
+                            parsedResponse = { results: [] };
+                        }
+                        
+                        const checklistResults = parseMistralResponse(response, checklistItems);
+                        console.log(`Response parsed for ${file.name}, found ${checklistResults.length} results`);
+                        
+                        resolve({
+                            file: file,
+                            imageData: e.target.result,
+                            checklistResults: checklistResults,
+                            extractedText: extractedText
+                        });
+                    } catch (error) {
+                        console.error(`Error in processFile for ${file.name}:`, error);
+                        reject(error);
+                    }
+                };
+                
+                reader.onerror = function(error) {
+                    console.error(`FileReader error for ${file.name}:`, error);
+                    reject(new Error('Failed to read file'));
+                };
+                
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Create the analysis prompt
+        function createAnalysisPrompt(checklistItems) {
+            return `Please analyze this image and check for the following items. For each item, determine if it is present and provide a confidence score from 0-100%.
+
+Items to check:
+${checklistItems.map(item => `- ${item}`).join('\n')}
+
+Please respond in this exact JSON format:
+{
+  "results": [
+    {
+      "item": "[item name]",
+      "found": true/false,
+      "confidence": [number between 0-100]
+    }
+  ]
+}
+
+Important: Only respond with the JSON, no other text.`;
+        }
+
+        // Parse the Mistral response
+        function parseMistralResponse(response, checklistItems) {
+            console.log('Parsing Mistral response...');
+            
+            try {
+                // First, try to parse the response directly
+                let parsedResponse;
+                try {
+                    parsedResponse = JSON.parse(response);
+                    if (parsedResponse.results) {
+                        console.log('Successfully parsed JSON response');
+                        return parsedResponse.results;
+                    }
+                } catch (e) {
+                    console.log('Direct JSON parsing failed, trying to extract JSON from markdown...');
+                }
+                
+                // If we have a markdown-formatted response, extract the JSON part
+                if (typeof response === 'string' && response.includes('```json')) {
+                    const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/);
+                    if (jsonMatch && jsonMatch[1]) {
+                        try {
+                            parsedResponse = JSON.parse(jsonMatch[1]);
+                            if (parsedResponse.results) {
+                                console.log('Successfully extracted JSON from markdown');
+                                return parsedResponse.results;
+                            }
+                        } catch (e) {
+                            console.error('Error parsing extracted JSON:', e);
+                        }
+                    }
+                }
+                
+                // If we have an originalResponse field (from our error handling)
+                if (typeof response === 'string') {
+                    try {
+                        const responseObj = JSON.parse(response);
+                        if (responseObj.originalResponse && responseObj.originalResponse.includes('```json')) {
+                            const jsonMatch = responseObj.originalResponse.match(/```json\s*([\s\S]*?)\s*```/);
+                            if (jsonMatch && jsonMatch[1]) {
+                                try {
+                                    parsedResponse = JSON.parse(jsonMatch[1]);
+                                    if (parsedResponse.results) {
+                                        console.log('Successfully extracted JSON from originalResponse');
+                                        return parsedResponse.results;
+                                    }
+                                } catch (e) {
+                                    console.error('Error parsing extracted JSON from originalResponse:', e);
+                                }
+                            }
+                        }
+                        
+                        // If we have extractedText, use it to do a direct text search
+                        if (responseObj.extractedText) {
+                            console.log('Using extractedText to perform direct text search');
+                            return performDirectTextSearch(responseObj.extractedText, checklistItems);
+                        }
+                    } catch (e) {
+                        console.error('Error parsing response object:', e);
+                    }
+                }
+                
+                // If all else fails, return empty results
+                console.error('Could not extract valid JSON from response:', response);
+                return checklistItems.map(item => ({
+                    item: item,
+                    found: false,
+                    confidence: 0,
+                    explanation: "Failed to parse response"
+                }));
+            } catch (error) {
+                console.error('Error in parseMistralResponse:', error);
+                return checklistItems.map(item => ({
+                    item: item,
+                    found: false,
+                    confidence: 0,
+                    explanation: "Error parsing response"
+                }));
+            }
+        }
+
+        // Perform direct text search on extracted text with category matching
+        function performDirectTextSearch(extractedText, checklistItems) {
+            console.log('Performing direct text search on extracted text with category matching');
+            
+            // Convert text to lowercase for case-insensitive matching
+            const textLower = extractedText.toLowerCase();
+            
+            return checklistItems.map(item => {
+                const itemLower = item.toLowerCase();
+                
+                // Define category-specific keywords for common checklist items
+                const categoryKeywords = {
+                    'henkel brand name': ['henkel', 'henkel corporation', 'henkel way'],
+                    'manufacturing address': ['address', 'corporation', 'inc', 'llc', 'street', 'avenue', 'ave', 'st', 'road', 'rd', 'lane', 'ln', 'way', 'drive', 'dr', 'boulevard', 'blvd', 'suite', 'ste', 'unit', 'floor', 'fl', 'building', 'bldg', 'city', 'state', 'zip', 'postal code'],
+                    'country of origin': ['made in', 'product of', 'manufactured in', 'origin', 'country of origin', 'usa', 'united states', 'china', 'mexico', 'canada', 'germany', 'france', 'italy', 'spain', 'uk', 'united kingdom', 'japan', 'korea', 'taiwan', 'thailand', 'vietnam', 'malaysia', 'indonesia', 'india', 'brazil', 'argentina', 'colombia', 'chile', 'peru', 'australia', 'new zealand'],
+                    'product code': ['code', 'sku', 'item #', 'item no', 'item number', 'product #', 'product no', 'product number', 'model #', 'model no', 'model number', 'part #', 'part no', 'part number', 'ref #', 'ref no', 'ref number', 'reference #', 'reference no', 'reference number', 'upc', 'ean', 'isbn', 'asin'],
+                    'warning statements': ['warning', 'caution', 'danger', 'hazard', 'precaution', 'attention', 'alert', 'notice', 'important', 'safety', 'risk', 'harmful', 'toxic', 'poison', 'flammable', 'combustible', 'corrosive', 'irritant', 'explosive', 'reactive', 'oxidizer', 'carcinogen', 'mutagen', 'teratogen', 'reproductive toxin', 'sensitizer', 'allergen', 'asphyxiant', 'pyrophoric', 'water reactive', 'compressed gas', 'cryogenic', 'organic peroxide', 'self-reactive', 'self-heating', 'emits flammable gas', 'desensitized explosive', 'acute toxicity', 'skin corrosion', 'eye damage', 'respiratory sensitization', 'skin sensitization', 'germ cell mutagenicity', 'carcinogenicity', 'reproductive toxicity', 'specific target organ toxicity', 'aspiration hazard', 'hazardous to the aquatic environment', 'hazardous to the ozone layer'],
+                    'regulatory compliance marks': ['ce', 'ul', 'csa', 'etl', 'fcc', 'rohs', 'weee', 'reach', 'eac', 'ccc', 'kc', 'pse', 'bsmi', 'vcci', 'c-tick', 'rcm', 'iram', 'saso', 'sabs', 'gs', 'nemko', 'semko', 'demko', 'fimko', 'cebec', 'kema', 'tuv', 'vde', 'nrtl', 'nrcan', 'energy star', 'epeat', 'california prop 65', 'proposition 65', 'ca prop 65', 'ca proposition 65', 'california proposition 65', 'california prop 65', 'prop 65', 'p65', 'p65warnings', 'p65warnings.ca.gov', 'www.p65warnings.ca.gov'],
+                    'ingredients list': ['ingredients', 'contains', 'made with', 'composed of', 'formulated with', 'active ingredients', 'inactive ingredients', 'key ingredients', 'ingredient list', 'ingredient declaration', 'composition', 'formula', 'formulation', 'recipe', 'contents', 'components', 'constituents', 'elements', 'materials', 'substances', 'compounds', 'chemicals', 'additives', 'preservatives', 'colorants', 'dyes', 'pigments', 'fragrances', 'flavors', 'sweeteners', 'emulsifiers', 'stabilizers', 'thickeners', 'gelling agents', 'binders', 'fillers', 'bulking agents', 'anti-caking agents', 'humectants', 'moisturizers', 'conditioners', 'surfactants', 'detergents', 'cleansers', 'solvents', 'diluents', 'carriers', 'vehicles', 'excipients', 'adjuvants', 'propellants', 'foaming agents', 'defoaming agents', 'dispersants', 'suspending agents', 'sequestrants', 'chelating agents', 'ph adjusters', 'buffers', 'neutralizers', 'acidulants', 'alkalizers', 'antioxidants', 'reducing agents', 'oxidizing agents', 'bleaching agents', 'tanning agents', 'curing agents', 'hardeners', 'plasticizers', 'softeners', 'lubricants', 'slip agents', 'release agents', 'anti-static agents', 'anti-blocking agents', 'anti-fogging agents', 'anti-slip agents', 'anti-settling agents', 'anti-redeposition agents', 'anti-soiling agents', 'anti-wrinkling agents', 'anti-pilling agents', 'anti-shrinking agents', 'anti-felting agents', 'anti-creasing agents', 'anti-curling agents', 'anti-sagging agents', 'anti-cratering agents', 'anti-flooding agents', 'anti-floating agents', 'anti-skinning agents', 'anti-livering agents', 'anti-marring agents', 'anti-chipping agents', 'anti-chalking agents', 'anti-blushing agents', 'anti-blooming agents', 'anti-bronzing agents', 'anti-mildew agents', 'anti-microbial agents', 'anti-bacterial agents', 'anti-fungal agents', 'anti-viral agents', 'anti-algal agents', 'anti-moss agents', 'anti-lichen agents', 'anti-insect agents', 'anti-termite agents', 'anti-rodent agents', 'anti-fouling agents', 'anti-corrosion agents', 'anti-rust agents', 'anti-tarnish agents', 'anti-scaling agents', 'anti-scuffing agents', 'anti-wear agents', 'anti-seize agents', 'anti-galling agents', 'anti-scoring agents', 'anti-welding agents', 'anti-spatter agents', 'anti-misting agents', 'anti-sag agents', 'anti-settling agents', 'anti-syneresis agents', 'anti-foam agents', 'anti-freeze agents', 'anti-boil agents', 'anti-knock agents', 'anti-stalling agents', 'anti-dieseling agents', 'anti-icing agents', 'anti-static agents', 'anti-ozonant agents', 'anti-oxidant agents', 'anti-reversion agents', 'anti-scorching agents', 'anti-skid agents', 'anti-slip agents', 'anti-stripping agents', 'anti-strip agents', 'anti-washout agents', 'anti-graffiti agents', 'anti-grease agents', 'anti-soil agents', 'anti-stain agents', 'anti-fog agents', 'anti-frost agents', 'anti-condensation agents', 'anti-reflective agents', 'anti-glare agents', 'anti-fingerprint agents', 'anti-smudge agents', 'anti-blur agents', 'anti-haze agents', 'anti-yellowing agents', 'anti-pinking agents', 'anti-greening agents', 'anti-reddening agents', 'anti-blueing agents', 'anti-purpling agents', 'anti-browning agents', 'anti-blackening agents', 'anti-graying agents', 'anti-whitening agents', 'anti-dulling agents', 'anti-fading agents', 'anti-bleeding agents', 'anti-crocking agents', 'anti-migration agents', 'anti-wicking agents', 'anti-wetting agents', 'anti-rewetting agents', 'anti-soaking agents', 'anti-spotting agents', 'anti-streaking agents', 'anti-crazing agents', 'anti-cracking agents', 'anti-checking agents', 'anti-splitting agents', 'anti-spalling agents', 'anti-flaking agents', 'anti-peeling agents', 'anti-blistering agents', 'anti-bubbling agents', 'anti-pinholing agents', 'anti-fisheye agents', 'anti-orange peel agents', 'anti-crawling agents', 'anti-popping agents', 'anti-cratering agents', 'anti-pitting agents', 'anti-dimpling agents', 'anti-wrinkling agents', 'anti-cissing agents', 'anti-floating agents', 'anti-flooding agents', 'anti-silking agents', 'anti-bronzing agents', 'anti-blooming agents', 'anti-blushing agents', 'anti-hazing agents', 'anti-clouding agents', 'anti-fogging agents', 'anti-misting agents', 'anti-dusting agents', 'anti-settling agents', 'anti-sagging agents', 'anti-running agents', 'anti-dripping agents', 'anti-spitting agents', 'anti-spattering agents', 'anti-splashing agents', 'anti-foaming agents', 'anti-gassing agents', 'anti-gelling agents', 'anti-thickening agents', 'anti-thinning agents', 'anti-thixotropic agents', 'anti-dilatant agents', 'anti-pseudoplastic agents', 'anti-rheopectic agents', 'anti-thixotropic agents', 'anti-dilatant agents', 'anti-pseudoplastic agents', 'anti-rheopectic agents', 'anti-newtonian agents', 'anti-viscosity agents', 'anti-rheology agents', 'anti-flow agents', 'anti-leveling agents', 'anti-sagging agents', 'anti-settling agents', 'anti-syneresis agents', 'anti-weeping agents', 'anti-bleeding agents', 'anti-migration agents', 'anti-wicking agents', 'anti-wetting agents', 'anti-rewetting agents', 'anti-soaking agents', 'anti-spotting agents', 'anti-streaking agents', 'anti-crazing agents', 'anti-cracking agents', 'anti-checking agents', 'anti-splitting agents', 'anti-spalling agents', 'anti-flaking agents', 'anti-peeling agents', 'anti-blistering agents', 'anti-bubbling agents', 'anti-pinholing agents', 'anti-fisheye agents', 'anti-orange peel agents', 'anti-crawling agents', 'anti-popping agents', 'anti-cratering agents', 'anti-pitting agents', 'anti-dimpling agents', 'anti-wrinkling agents', 'anti-cissing agents', 'anti-floating agents', 'anti-flooding agents', 'anti-silking agents', 'anti-bronzing agents', 'anti-blooming agents', 'anti-blushing agents', 'anti-hazing agents', 'anti-clouding agents', 'anti-fogging agents', 'anti-misting agents', 'anti-dusting agents', 'anti-settling agents', 'anti-sagging agents', 'anti-running agents', 'anti-dripping agents', 'anti-spitting agents', 'anti-spattering agents', 'anti-splashing agents', 'anti-foaming agents', 'anti-gassing agents', 'anti-gelling agents', 'anti-thickening agents', 'anti-thinning agents']
+                };
+                
+                // Check for exact match first
+                const isExactMatch = textLower.includes(itemLower);
+                
+                // If not an exact match, check for category keywords
+                let categoryMatches = 0;
+                let totalKeywords = 0;
+                let matchedKeywords = [];
+                
+                // Find the closest category if not an exact match
+                let bestMatchCategory = '';
+                let bestMatchScore = 0;
+                
+                for (const [category, keywords] of Object.entries(categoryKeywords)) {
+                    if (itemLower.includes(category) || category.includes(itemLower)) {
+                        // This is the category we're looking for
+                        totalKeywords = keywords.length;
+                        
+                        // Check how many keywords from this category are in the text
+                        keywords.forEach(keyword => {
+                            if (textLower.includes(keyword.toLowerCase())) {
+                                categoryMatches++;
+                                matchedKeywords.push(keyword);
+                            }
+                        });
+                        
+                        // Calculate match score (percentage of keywords found)
+                        const matchScore = totalKeywords > 0 ? (categoryMatches / Math.min(10, totalKeywords)) * 100 : 0;
+                        
+                        if (matchScore > bestMatchScore) {
+                            bestMatchScore = matchScore;
+                            bestMatchCategory = category;
+                        }
+                        
+                        break;
+                    }
+                }
+                
+                // If we didn't find a direct category match, try to find the best matching category
+                if (categoryMatches === 0) {
+                    for (const [category, keywords] of Object.entries(categoryKeywords)) {
+                        let matches = 0;
+                        let matched = [];
+                        
+                        keywords.forEach(keyword => {
+                            if (textLower.includes(keyword.toLowerCase())) {
+                                matches++;
+                                matched.push(keyword);
+                            }
+                        });
+                        
+                        // Calculate match score (percentage of keywords found)
+                        const matchScore = keywords.length > 0 ? (matches / Math.min(10, keywords.length)) * 100 : 0;
+                        
+                        if (matchScore > bestMatchScore) {
+                            bestMatchScore = matchScore;
+                            bestMatchCategory = category;
+                            categoryMatches = matches;
+                            matchedKeywords = matched;
+                            totalKeywords = keywords.length;
+                        }
+                    }
+                }
+                
+                // Calculate confidence based on match type
+                let confidence = 0;
+                let explanation = "Not found in the extracted text";
+                
+                if (isExactMatch) {
+                    confidence = 100;
+                    explanation = `Found exact match for "${item}" in the text`;
+                } else if (categoryMatches > 0) {
+                    // Calculate confidence based on how many category keywords were found
+                    // We cap at 10 keywords to avoid requiring too many matches
+                    confidence = Math.min(100, Math.round(bestMatchScore));
+                    
+                    if (confidence >= 90) {
+                        explanation = `Found strong category match for "${item}" (${matchedKeywords.slice(0, 3).join(', ')}${matchedKeywords.length > 3 ? '...' : ''})`;
+                    } else if (confidence >= 50) {
+                        explanation = `Found partial category match for "${item}" (${matchedKeywords.slice(0, 3).join(', ')}${matchedKeywords.length > 3 ? '...' : ''})`;
+                    } else {
+                        explanation = `Found weak category match for "${item}" (${matchedKeywords.slice(0, 2).join(', ')}${matchedKeywords.length > 2 ? '...' : ''})`;
+                    }
+                }
+                
+                return {
+                    item: item,
+                    found: confidence >= 50,
+                    confidence: confidence,
+                    explanation: explanation
+                };
+            });
+        }
+
+        // Call Mistral AI OCR API with improved error handling
+        async function callMistralAPI(apiKey, model, base64Image, prompt) {
+            console.log('Starting OCR API call to Mistral...');
+            
+            try {
+                // Validate API key format
+                if (!apiKey || apiKey.trim() === '') {
+                    throw new Error('API key is missing or empty');
+                }
+                
+                // First, call the OCR endpoint
+                const ocrEndpoint = 'https://api.mistral.ai/v1/ocr';
+                const ocrRequestBody = {
+                    model: "mistral-ocr-latest",
+                    document: {
+                        type: "image_url",
+                        image_url: `data:image/jpeg;base64,${base64Image}`
+                    }
+                };
+                
+                console.log('Sending OCR request to Mistral...');
+                
+                // Log the first 5 characters of the API key for debugging (never log the full key)
+                console.log(`Using API key starting with: ${apiKey.substring(0, 5)}...`);
+                
+                const ocrResponse = await fetch(ocrEndpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey.trim()}`
+                    },
+                    body: JSON.stringify(ocrRequestBody)
+                });
+                
+                if (!ocrResponse.ok) {
+                    const errorData = await ocrResponse.json();
+                    console.error('OCR Error details:', errorData);
+                    
+                    // Handle specific error cases
+                    if (ocrResponse.status === 401) {
+                        throw new Error('Authentication failed: Please check your API key. Make sure it is valid and has not expired.');
+                    } else if (ocrResponse.status === 429) {
+                        throw new Error('Rate limit exceeded: Too many requests. Please try again later.');
+                    } else {
+                        throw new Error(`OCR request failed with status ${ocrResponse.status}: ${JSON.stringify(errorData)}`);
+                    }
+                }
+                
+                const ocrData = await ocrResponse.json();
+                console.log('Full OCR Response:', JSON.stringify(ocrData));
+                
+                // Extract text from OCR response - the text is in the markdown field of the pages
+                let extractedText = '';
+                
+                // Check if we have pages with markdown content
+                if (ocrData.pages && ocrData.pages.length > 0) {
+                    // Combine markdown from all pages
+                    extractedText = ocrData.pages.map(page => page.markdown || '').join('\n\n');
+                } else if (ocrData.text) {
+                    // Fallback to text field if it exists
+                    extractedText = ocrData.text;
+                }
+                
+                // Log the extracted text for debugging
+                console.log('Extracted text length:', extractedText.length);
+                console.log('Extracted text sample:', extractedText.substring(0, 200) + '...');
+                
+                // Update the extracted text display immediately
+                updateExtractedTextDisplay(extractedText);
+                
+                // If no text was extracted, return empty results
+                if (!extractedText.trim()) {
+                    console.log('No text extracted from image, returning empty results');
+                    return JSON.stringify({
+                        results: checklistItems.map(item => ({
+                            item: item,
+                            found: false,
+                            confidence: 0,
+                            explanation: "No text was extracted from the image"
+                        })),
+                        extractedText: ""
+                    });
+                }
+                
+                // Now use chat completion to analyze the extracted text
+                const chatEndpoint = 'https://api.mistral.ai/v1/chat/completions';
+                const chatRequestBody = {
+                    model: "mistral-small-latest",
+                    messages: [
+                        {
+                            role: "system",
+                            content: "You are a compliance checker analyzing text extracted from product packaging images. Your job is to determine if specific items are present in the text."
+                        },
+                        {
+                            role: "user",
+                            content: `I have extracted text from a product packaging image using OCR. Please check if the following items appear in this text.
+
+The extracted text is:
+"""
+${extractedText}
+"""
+
+For each item in this list, tell me if it appears in the text:
+${checklistItems.map(item => `- ${item}`).join('\n')}
+
+Use these confidence levels:
+- If you're more than 90% confident it's present: 100
+- If you're 50-90% confident it's present: 50
+- If you're less than 50% confident it's present: 0
+
+Be flexible in your matching - for example, if looking for "Manufacturing address" and you see a physical address in the text, that counts as a match.
+
+Respond in this exact JSON format:
+{
+  "results": [
+    {
+      "item": "[item name]",
+      "found": true/false,
+      "confidence": [0, 50, or 100],
+      "explanation": "[brief explanation of why you think it's present or not]"
+    }
+  ]
+}`
+                        }
+                    ],
+                    temperature: 0.1
+                };
+                
+                console.log('Sending analysis request to Mistral...');
+                
+                const chatResponse = await fetch(chatEndpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey.trim()}`
+                    },
+                    body: JSON.stringify(chatRequestBody)
+                });
+                
+                if (!chatResponse.ok) {
+                    const errorData = await chatResponse.json();
+                    console.error('Chat Error details:', errorData);
+                    
+                    // Handle specific error cases
+                    if (chatResponse.status === 401) {
+                        throw new Error('Authentication failed: Please check your API key. Make sure it is valid and has not expired.');
+                    } else {
+                        throw new Error(`Analysis request failed with status ${chatResponse.status}: ${JSON.stringify(errorData)}`);
+                    }
+                }
+                
+                const analysisData = await chatResponse.json();
+                console.log('Analysis Response:', analysisData);
+                
+                // Add the extracted text to the response
+                const responseContent = analysisData.choices[0].message.content;
+                try {
+                    // Try to parse the response and add the extracted text
+                    const responseJson = JSON.parse(responseContent);
+                    responseJson.extractedText = extractedText;
+                    return JSON.stringify(responseJson);
+                } catch (e) {
+                    // If parsing fails, try to extract JSON from markdown
+                    console.error('Error parsing response JSON:', e);
+                    
+                    if (responseContent.includes('```json')) {
+                        const jsonMatch = responseContent.match(/```json\s*([\s\S]*?)\s*```/);
+                        if (jsonMatch && jsonMatch[1]) {
+                            try {
+                                const extractedJson = JSON.parse(jsonMatch[1]);
+                                extractedJson.extractedText = extractedText;
+                                return JSON.stringify(extractedJson);
+                            } catch (e2) {
+                                console.error('Error parsing extracted JSON:', e2);
+                            }
+                        }
+                    }
+                    
+                    // If all else fails, return the original response with the extracted text
+                    return JSON.stringify({
+                        originalResponse: responseContent,
+                        extractedText: extractedText
+                    });
+                }
+            } catch (error) {
+                console.error('Mistral API Error:', error);
+                
+                // Display a user-friendly error message
+                updateExtractedTextDisplay(`Error: ${error.message}`);
+                
+                // Return an error response
+                return JSON.stringify({
+                    error: error.message,
+                    results: checklistItems.map(item => ({
+                        item: item,
+                        found: false,
+                        confidence: 0,
+                        explanation: "Error occurred during processing"
+                    }))
+                });
+            }
+        }
+
+        // Function to update the extracted text display
+        function updateExtractedTextDisplay(text) {
+            const extractedTextElement = document.getElementById('extractedText');
+            if (extractedTextElement) {
+                extractedTextElement.textContent = text || 'No text extracted';
+                
+                // Make the container visible
+                const container = document.getElementById('extractedTextContainer');
+                if (container) {
+                    container.classList.remove('hidden');
+                }
+                
+                // Update the toggle button
+                const toggleButton = document.getElementById('toggleExtractedText');
+                if (toggleButton) {
+                    toggleButton.textContent = 'Hide Extracted Text';
+                }
+            } else {
+                console.error('Could not find extractedText element');
+            }
+        }
+
+        // Initialize the results table with columns for each checklist item
+        function initializeResultsTable() {
+            console.log('Initializing results table...');
+            
+            // Check if the elements exist
+            if (!resultsTableBody || !resultsTableHeader) {
+                console.error('Results table elements not found:', { 
+                    resultsTableBody: !!resultsTableBody, 
+                    resultsTableHeader: !!resultsTableHeader 
+                });
+                errorMessages.classList.remove('hidden');
+                errorMessages.innerHTML += `<div>Error: Could not find table elements</div>`;
+                return;
+            }
+            
+            // Clear previous results
+            resultsTableBody.innerHTML = '';
+            
+            // Get the header row
+            const headerRow = resultsTableHeader.querySelector('tr');
+            if (!headerRow) {
+                console.error('Header row not found in resultsTableHeader');
+                errorMessages.classList.remove('hidden');
+                errorMessages.innerHTML += `<div>Error: Could not find table header row</div>`;
+                return;
+            }
+            
+            console.log('Clearing existing checklist columns...');
+            
+            // Clear existing checklist columns (keep the first 3 static columns)
+            while (headerRow.children.length > 3) {
+                headerRow.removeChild(headerRow.lastChild);
+            }
+            
+            console.log('Adding columns for checklist items...');
+            
+            // Add columns for each checklist item
+            checklistItems.forEach(item => {
+                const th = document.createElement('th');
+                th.scope = 'col';
+                th.className = 'px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider';
+                th.textContent = item.length > 20 ? item.substring(0, 20) + '...' : item;
+                th.title = item; // Full text on hover
+                headerRow.appendChild(th);
+            });
+            
+            console.log('Results table initialized with', checklistItems.length, 'columns');
+        }
+
+        // Add a result to the results table
+        function addResultToTable(result, index) {
+            const row = document.createElement('tr');
+            row.className = index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700';
+            
+            // Index column
+            const indexCell = document.createElement('td');
+            indexCell.className = 'px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400';
+            indexCell.textContent = index + 1;
+            row.appendChild(indexCell);
+            
+            // Thumbnail column
+            const imageCell = document.createElement('td');
+            imageCell.className = 'px-4 py-4 whitespace-nowrap';
+            
+            if (result.imageData) {
+                const img = document.createElement('img');
+                img.src = result.imageData;
+                img.className = 'h-16 w-16 object-cover rounded';
+                img.alt = result.file.name;
+                imageCell.appendChild(img);
+            } else {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'h-16 w-16 bg-gray-200 dark:bg-gray-600 rounded flex items-center justify-center';
+                placeholder.innerHTML = '<svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>';
+                imageCell.appendChild(placeholder);
+            }
+            
+            row.appendChild(imageCell);
+            
+            // Filename column
+            const filenameCell = document.createElement('td');
+            filenameCell.className = 'px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white';
+            
+            if (result.error) {
+                filenameCell.innerHTML = `<span class="text-red-500">${result.file.name}</span><br><span class="text-xs text-red-400">${result.error}</span>`;
+            } else {
+                filenameCell.textContent = result.file.name;
+            }
+            
+            row.appendChild(filenameCell);
+            
+            // Checklist result columns
+            if (result.checklistResults) {
+                result.checklistResults.forEach(checkResult => {
+                    const resultCell = document.createElement('td');
+                    resultCell.className = 'px-4 py-4 whitespace-nowrap text-sm';
+                    
+                    const confidenceValue = checkResult.confidence || 0;
+                    let confidenceClass = 'confidence-none';
+                    let symbol = '✗';
+                    
+                    if (confidenceValue >= 100) {
+                        confidenceClass = 'confidence-100';
+                        symbol = '✓';
+                    } else if (confidenceValue >= 50) {
+                        confidenceClass = 'confidence-partial';
+                        symbol = '?';
+                    }
+                    
+                    resultCell.innerHTML = `<span class="result-checkmark ${confidenceClass}" title="${confidenceValue}% confidence">${symbol}</span>`;
+                    row.appendChild(resultCell);
+                });
+            } else {
+                // If no results available, add empty cells
+                checklistItems.forEach(() => {
+                    const emptyCell = document.createElement('td');
+                    emptyCell.className = 'px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400';
+                    emptyCell.textContent = '-';
+                    row.appendChild(emptyCell);
+                });
+            }
+            
+            resultsTableBody.appendChild(row);
+        }
+
+        // Finish processing
+        function finishProcessing() {
+            isProcessing = false;
+            analyzeBtn.disabled = false;
+            analyzeSpinner.classList.add('hidden');
+            pauseBtn.classList.add('hidden');
+            resumeBtn.classList.add('hidden');
+            
+            // Update progress to 100%
+            progressBar.style.width = '100%';
+            progressPercentage.textContent = '100%';
+            progressCount.textContent = `${selectedFiles.length}/${selectedFiles.length}`;
+            currentlyProcessing.textContent = 'Processing complete!';
+            
+            // Show results section
+            resultsSection.classList.remove('hidden');
+            
+            // Add Excel export button
+            addExcelExportButton();
+        }
+
+        // Export results as CSV
+        function exportAsCSV() {
+            // Create CSV header
+            const header = ['#', 'Filename'];
+            checklistItems.forEach(item => header.push(item));
+            
+            // Create CSV rows
+            const rows = results.map((result, index) => {
+                const row = [index + 1, result.file.name];
+                
+                if (result.checklistResults) {
+                    result.checklistResults.forEach(checkResult => {
+                        const confidenceValue = checkResult.confidence || 0;
+                        let symbol = 'X';
+                        
+                        if (confidenceValue >= 100) {
+                            symbol = '✓';
+                        } else if (confidenceValue >= 50) {
+                            symbol = '?';
+                        }
+                        
+                        row.push(`${symbol} (${confidenceValue}%)`);
+                    });
+                } else {
+                    checklistItems.forEach(() => row.push('-'));
+                }
+                
+                return row;
+            });
+            
+            // Create CSV content
+            const csvContent = [header, ...rows].map(row => row.join(',')).join('\n');
+            
+            // Copy to clipboard
+            copyTextToClipboard(csvContent);
+            
+            // Alert user
+            const oldText = exportCSVBtn.innerHTML;
+            exportCSVBtn.innerHTML = `<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Copied!`;
+            setTimeout(() => {
+                exportCSVBtn.innerHTML = oldText;
+            }, 2000);
+        }
+
+        // Copy text to clipboard
+        function copyTextToClipboard(text) {
+            navigator.clipboard.writeText(text).catch(err => {
+                console.error('Failed to copy text: ', err);
+                
+                // Fallback method for clipboard
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                
+                try {
+                    document.execCommand('copy');
+                } catch (e) {
+                    console.error('Fallback copy method failed: ', e);
+                }
+                
+                document.body.removeChild(textarea);
+            });
+        }
+
+        // Download results table as HTML
+        function downloadHTMLTable() {
+            // Create a styled HTML document with the results table
+            const tableHtml = document.getElementById('resultsTable').outerHTML;
+            
+            const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Compliance Checker Results</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { padding: 8px; border: 1px solid #ddd; }
+        th { background-color: #f2f2f2; text-align: left; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .confidence-100 { color: #22c55e; }
+        .confidence-partial { color: #f59e0b; }
+        .confidence-none { color: #ef4444; }
+        .result-checkmark { font-size: 1.2rem; font-weight: bold; }
+        img { max-width: 100px; max-height: 100px; }
+    </style>
+</head>
+<body>
+    <h1>Image Compliance Checker Results</h1>
+    <p>Generated: ${new Date().toLocaleString()}</p>
+    ${tableHtml}
+</body>
+</html>`;
+
+            // Create a data URI
+            const dataUri = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
+            
+            // Create temporary link
+            const link = document.createElement('a');
+            link.href = dataUri;
+            link.download = 'compliance_results.html';
+            link.target = '_blank';
+            link.textContent = 'Download HTML';
+            
+            // Since direct downloads aren't supported in the sandbox, open in a new tab
+            link.click();
+            
+            // Also notify the user they should manually save the page
+            const oldText = downloadTableBtn.innerHTML;
+            downloadTableBtn.innerHTML = `<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Page opened in new tab`;
+            setTimeout(() => {
+                downloadTableBtn.innerHTML = oldText;
+            }, 3000);
+        }
+
+        // Add a new button for Excel export
+        function addExcelExportButton() {
+            // Find the button container
+            const buttonContainer = document.querySelector('#resultsSection .mb-4.flex.flex-wrap.gap-2');
+            
+            if (!buttonContainer) {
+                console.error('Button container not found');
+                return;
+            }
+            
+            // Create Excel export button
+            const excelButton = document.createElement('button');
+            excelButton.id = 'exportExcelBtn';
+            excelButton.className = 'px-4 py-2 bg-green-700 text-white rounded-md hover:bg-opacity-90 transition flex items-center';
+            excelButton.innerHTML = `
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                Download Excel
+            `;
+            
+            // Add event listener
+            excelButton.addEventListener('click', exportToExcel);
+            
+            // Add to container
+            buttonContainer.appendChild(excelButton);
+            
+            console.log('Excel export button added');
+        }
+
+        // Export results to Excel
+        async function exportToExcel() {
+            console.log('Exporting to Excel...');
+            
+            try {
+                // Create a new workbook
+                const workbook = new ExcelJS.Workbook();
+                const worksheet = workbook.addWorksheet('Compliance Results');
+                
+                // Add headers
+                const headers = ['#', 'Filename'];
+                checklistItems.forEach(item => headers.push(item));
+                
+                worksheet.addRow(headers);
+                
+                // Format header row
+                worksheet.getRow(1).font = { bold: true };
+                worksheet.getRow(1).fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FFE0E0E0' }
+                };
+                
+                // Add data rows
+                results.forEach((result, index) => {
+                    const row = [index + 1, result.file.name];
+                    
+                    if (result.checklistResults) {
+                        result.checklistResults.forEach(checkResult => {
+                            const confidenceValue = checkResult.confidence || 0;
+                            row.push(confidenceValue);
+                        });
+                    } else {
+                        checklistItems.forEach(() => row.push(0));
+                    }
+                    
+                    worksheet.addRow(row);
+                });
+                
+                // Fix for column width calculation
+                const columnWidths = [];
+                
+                // Calculate width for each column
+                headers.forEach((header, i) => {
+                    // Start with the header length
+                    let maxWidth = String(header).length;
+                    
+                    // Check data in each row
+                    results.forEach(result => {
+                        if (i === 0) {
+                            // Index column
+                            maxWidth = Math.max(maxWidth, 3); // "#" is usually short
+                        } else if (i === 1) {
+                            // Filename column
+                            maxWidth = Math.max(maxWidth, result.file.name.length);
+                        } else if (result.checklistResults && result.checklistResults[i-2]) {
+                            // Checklist result columns
+                            maxWidth = Math.max(maxWidth, String(result.checklistResults[i-2].confidence || 0).length);
+                        }
+                    });
+                    
+                    // Add some padding
+                    columnWidths.push(maxWidth + 2);
+                });
+                
+                // Apply column widths
+                worksheet.columns.forEach((column, i) => {
+                    column.width = columnWidths[i] || 12; // Default to 12 if calculation failed
+                });
+                
+                // Add conditional formatting for confidence values
+                for (let i = 3; i <= headers.length; i++) {
+                    const colLetter = String.fromCharCode(64 + i);
+                    worksheet.addConditionalFormatting({
+                        ref: `${colLetter}2:${colLetter}${results.length + 1}`,
+                        rules: [
+                            {
+                                type: 'colorScale',
+                                cfvo: [
+                                    { type: 'num', value: 0 },
+                                    { type: 'num', value: 50 },
+                                    { type: 'num', value: 100 }
+                                ],
+                                color: [
+                                    { argb: 'FFFF0000' }, // Red
+                                    { argb: 'FFFFFF00' }, // Yellow
+                                    { argb: 'FF00FF00' }  // Green
+                                ]
+                            }
+                        ]
+                    });
+                }
+                
+                // Generate Excel file
+                const buffer = await workbook.xlsx.writeBuffer();
+                
+                // Create a Blob from the buffer
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                
+                // Create download link
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'compliance_results.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                
+                // Clean up
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 0);
+                
+                console.log('Excel export completed');
+            } catch (error) {
+                console.error('Error exporting to Excel:', error);
+                alert('Error exporting to Excel: ' + error.message);
+            }
+        }
+
+        // Add a function to display the extracted text for debugging
+        function addExtractedTextDisplay() {
+            // Create a container for the extracted text
+            const extractedTextContainer = document.createElement('div');
+            extractedTextContainer.id = 'extractedTextContainer';
+            extractedTextContainer.className = 'mt-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-md hidden';
+            
+            // Add a heading
+            const heading = document.createElement('h3');
+            heading.className = 'text-lg font-medium mb-2';
+            heading.textContent = 'Extracted Text:';
+            extractedTextContainer.appendChild(heading);
+            
+            // Add a pre element for the text
+            const textElement = document.createElement('pre');
+            textElement.id = 'extractedText';
+            textElement.className = 'whitespace-pre-wrap text-sm font-mono';
+            extractedTextContainer.appendChild(textElement);
+            
+            // Add a toggle button
+            const toggleButton = document.createElement('button');
+            toggleButton.id = 'toggleExtractedText';
+            toggleButton.className = 'mt-4 px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600 transition';
+            toggleButton.textContent = 'Show Extracted Text';
+            toggleButton.addEventListener('click', () => {
+                const container = document.getElementById('extractedTextContainer');
+                if (container.classList.contains('hidden')) {
+                    container.classList.remove('hidden');
+                    toggleButton.textContent = 'Hide Extracted Text';
+                } else {
+                    container.classList.add('hidden');
+                    toggleButton.textContent = 'Show Extracted Text';
+                }
+            });
+            
+            // Add to the page
+            const resultsSection = document.getElementById('resultsSection');
+            if (resultsSection) {
+                resultsSection.appendChild(toggleButton);
+                resultsSection.appendChild(extractedTextContainer);
+            }
+        }
+
+        // Call this function when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize references to table elements
+            window.resultsTableHeader = document.querySelector('#resultsTable thead');
+            window.resultsTableBody = document.querySelector('#resultsTable tbody');
+            
+            if (!resultsTableHeader || !resultsTableBody) {
+                console.error('Could not find table elements on page load');
+            } else {
+                console.log('Table elements initialized successfully');
+            }
+            
+            // Add specialized check buttons
+            addSpecializedCheckButtons();
+            
+            // Add extracted text display
+            addExtractedTextDisplay();
+        });
+
+        // Add specialized check buttons
+        function addSpecializedCheckButtons() {
+            // Find the checklist container - look for the specific container that holds the other buttons
+            const checklistContainer = document.querySelector('#checklistItems');
+            if (!checklistContainer) {
+                console.error('Checklist items container not found');
+                return;
+            }
+            
+            // Find the parent element that contains the existing buttons
+            const parentElement = checklistContainer.parentElement;
+            if (!parentElement) {
+                console.error('Parent element not found');
+                return;
+            }
+            
+            // Create a container for the specialized buttons that matches the existing style
+            const specialButtonsContainer = document.createElement('div');
+            specialButtonsContainer.className = 'mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2';
+            specialButtonsContainer.id = 'specializedChecks';
+            
+            // Add Henkel check button
+            const henkelButton = document.createElement('button');
+            henkelButton.className = 'px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition';
+            henkelButton.textContent = 'Henkel Brand';
+            henkelButton.addEventListener('click', () => {
+                addChecklistItem('Henkel brand name');
+            });
+            specialButtonsContainer.appendChild(henkelButton);
+            
+            // Add Manufacturing Address button
+            const addressButton = document.createElement('button');
+            addressButton.className = 'px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition';
+            addressButton.textContent = 'Manufacturing Address';
+            addressButton.addEventListener('click', () => {
+                addChecklistItem('Manufacturing address');
+                addChecklistItem('Country of origin');
+            });
+            specialButtonsContainer.appendChild(addressButton);
+            
+            // Add Product Code button
+            const productCodeButton = document.createElement('button');
+            productCodeButton.className = 'px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition';
+            productCodeButton.textContent = 'Product Code';
+            productCodeButton.addEventListener('click', () => {
+                addChecklistItem('Product code or SKU');
+            });
+            specialButtonsContainer.appendChild(productCodeButton);
+            
+            // Add Legal Compliance button
+            const legalButton = document.createElement('button');
+            legalButton.className = 'px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition';
+            legalButton.textContent = 'Legal Requirements';
+            legalButton.addEventListener('click', () => {
+                addChecklistItem('Warning statements');
+                addChecklistItem('Regulatory compliance marks');
+            });
+            specialButtonsContainer.appendChild(legalButton);
+            
+            // Add a heading for the specialized buttons
+            const heading = document.createElement('h3');
+            heading.className = 'text-sm font-medium mt-4 mb-2';
+            heading.textContent = 'Additional Checks:';
+            
+            // Insert the heading and buttons container after the checklist textarea
+            parentElement.insertBefore(heading, checklistContainer.nextSibling);
+            parentElement.insertBefore(specialButtonsContainer, heading.nextSibling);
+            
+            console.log('Specialized check buttons added');
+        }
+
+        // Function to add an item to the checklist
+        function addChecklistItem(item) {
+            const currentText = checklistItemsInput.value;
+            const items = currentText.split('\n').map(i => i.trim()).filter(i => i.length > 0);
+            
+            // Check if item already exists
+            if (!items.includes(item)) {
+                // Add the new item
+                if (currentText && !currentText.endsWith('\n')) {
+                    checklistItemsInput.value = currentText + '\n' + item;
+                } else {
+                    checklistItemsInput.value = currentText + item;
+                }
+            }
+            
+            // Flash the textarea to indicate the item was added
+            checklistItemsInput.classList.add('bg-green-100', 'dark:bg-green-900');
+            setTimeout(() => {
+                checklistItemsInput.classList.remove('bg-green-100', 'dark:bg-green-900');
+            }, 500);
+        }
+    </script>
+
+
+</body></html>
